@@ -61,6 +61,12 @@ const char R_erase[]              PROGMEM = "/erase";
 const char R_status[]             PROGMEM = "/status";
 const char R_update[]             PROGMEM = "/update";
 const char R_updatedone[]         PROGMEM = "/u";
+const char R_wizard_step1[]       PROGMEM = "/wizard/step1";
+const char R_wizard_step2[]       PROGMEM = "/wizard/step2";
+const char R_wizard_next[]        PROGMEM = "/wizard/next";
+const char R_wizard_back[]        PROGMEM = "/wizard/back";
+const char R_wizard_skip[]        PROGMEM = "/wizard/skip";
+const char R_wizard_complete[]    PROGMEM = "/wizard/complete";
 
 
 // Classes

@@ -251,6 +251,14 @@ class WiFiManagerParameter {
         WM_DEBUG_MAX       = 5  // MAX extra dev auditing, var dumps etc (MAX+1 will print timing,mem and frag info)
     } wm_debuglevel_t;
 
+    // wizard state
+    typedef enum {
+        WIZARD_STEP_NONE    = 0, // wizard not active or at start
+        WIZARD_STEP_WIFI    = 1, // step 1: WiFi credentials
+        WIZARD_STEP_PARAMS  = 2, // step 2: custom parameters
+        WIZARD_STEP_COMPLETE = 3 // wizard complete
+    } wizard_step_t;
+
 class WiFiManager
 {
   public:
@@ -333,6 +341,11 @@ class WiFiManager
 
     //called when config portal is timeout
     void          setConfigPortalTimeoutCallback( std::function<void()> func );
+
+    //wizard mode configuration
+    void          setWizardMode(bool enable);
+    void          setWifiVerificationTimeout(unsigned long timeout);
+    void          setVerifyParamsCallback( std::function<bool()> func );
 
     //sets timeout before AP,webserver loop ends and exits even if there has been no setup.
     //useful for devices that failed to connect at some point and got stuck in a webserver loop
@@ -606,6 +619,9 @@ class WiFiManager
     boolean       _showBack               = false; // show back button
     boolean       _enableConfigPortal     = true;  // FOR autoconnect - start config portal if autoconnect failed
     boolean       _disableConfigPortal    = true;  // FOR autoconnect - stop config portal if cp wifi save
+    boolean       _wizardMode             = false; // enable step-by-step wizard mode
+    wizard_step_t _wizardStep             = WIZARD_STEP_NONE; // current wizard step
+    unsigned long _wifiVerificationTimeout = 5000; // timeout for WiFi verification in wizard mode (ms)
     String        _hostname               = "";    // hostname for esp8266 for dhcp, and or MDNS
 
     const char*   _customHeadElement      = ""; // store custom head element html from user inside <head>
@@ -696,6 +712,15 @@ protected:
     void          handleRequest();
     void          handleParamSave();
     void          doParamSave();
+    
+    // wizard handlers
+    void          handleWizardStep1();
+    void          handleWizardStep2();
+    void          handleWizardNext();
+    void          handleWizardBack();
+    void          handleWizardSkip();
+    void          handleWizardComplete();
+    uint8_t       verifyWiFiCredentials(String ssid, String pass);
 
     boolean       captivePortal();
     boolean       configPortalHasTimeout();
@@ -852,6 +877,7 @@ protected:
     std::function<void()> _resetcallback;
     std::function<void()> _preotaupdatecallback;
     std::function<void()> _configportaltimeoutcallback;
+    std::function<bool()> _verifyParamscallback; // wizard mode: verify custom parameters, return true if valid
 
     template <class T>
     auto optionalIPFromString(T *obj, const char *s) -> decltype(  obj->fromString(s)  ) {

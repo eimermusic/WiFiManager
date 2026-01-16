@@ -79,6 +79,20 @@ const char HTTP_ERASEBTN[]         PROGMEM = "<br/><form action='/erase' method=
 const char HTTP_UPDATEBTN[]        PROGMEM = "<br/><form action='/update' method='get'><button>Update</button></form>";
 const char HTTP_BACKBTN[]          PROGMEM = "<hr><br/><form action='/' method='get'><button>Back</button></form>";
 
+// wizard templates
+const char HTTP_WIZARD_STEP1[]     PROGMEM = "<h2>Step 1: WiFi Credentials</h2><p>Enter your WiFi network name and password.</p>";
+const char HTTP_WIZARD_STEP2[]     PROGMEM = "<h2>Step 2: Custom Parameters</h2><p>Configure additional settings.</p>";
+const char HTTP_WIZARD_VERIFYING[] PROGMEM = "<div class='msg'>Verifying credentials...<br/>Please wait.</div>";
+const char HTTP_WIZARD_WIFI_SUCCESS[] PROGMEM = "<div class='msg S'><strong>WiFi credentials verified successfully!</strong><br/>Connection test passed.</div>";
+const char HTTP_WIZARD_WIFI_FAILED[] PROGMEM = "<div class='msg'><strong>WiFi verification failed</strong><br/>{v}</div>";
+const char HTTP_WIZARD_PARAMS_SUCCESS[] PROGMEM = "<div class='msg S'><strong>Parameters verified successfully!</strong></div>";
+const char HTTP_WIZARD_PARAMS_FAILED[] PROGMEM = "<div class='msg'><strong>Parameter verification failed</strong><br/>Please check your settings and try again.</div>";
+const char HTTP_WIZARD_COMPLETE[]  PROGMEM = "<div class='msg S'><h2>Configuration Complete!</h2><p>All settings have been saved successfully.</p></div>";
+const char HTTP_WIZARD_BACK_BTN[]  PROGMEM = "<form action='/wizard/back' method='get' style='display:inline;margin-right:10px;'><button type='submit'>Back</button></form>";
+const char HTTP_WIZARD_SKIP_BTN[] PROGMEM = "<form action='/wizard/skip' method='get' style='display:inline;margin-right:10px;'><button type='submit'>Skip</button></form>";
+const char HTTP_WIZARD_NEXT_BTN[] PROGMEM = "<form action='/wizard/next' method='get' style='display:inline;margin-right:10px;'><button type='submit'>Next</button></form>";
+const char HTTP_WIZARD_EXIT_BTN[] PROGMEM = "<form action='/exit' method='get'><button type='submit'>Exit Configuration</button></form>";
+
 const char HTTP_STATUS_ON[]        PROGMEM = "<div class='msg S'><strong>Connected</strong> to {v}<br/><em><small>with IP {i}</small></em></div>";
 const char HTTP_STATUS_OFF[]       PROGMEM = "<div class='msg {c}'><strong>Not connected</strong> to {v}{r}</div>"; // {c=class} {v=ssid} {r=status_off}
 const char HTTP_STATUS_OFFPW[]     PROGMEM = "<br/>Authentication failure"; // STATION_WRONG_PASSWORD,  no eps32

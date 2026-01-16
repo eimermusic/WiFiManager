@@ -653,6 +653,13 @@ void WiFiManager::setupHTTPServer(){
   server->on(WM_G(R_close),      std::bind(&WiFiManager::handleClose, this));
   server->on(WM_G(R_erase),      std::bind(&WiFiManager::handleErase, this, false));
   server->on(WM_G(R_status),     std::bind(&WiFiManager::handleWiFiStatus, this));
+  // wizard routes
+  server->on(WM_G(R_wizard_step1),    std::bind(&WiFiManager::handleWizardStep1, this));
+  server->on(WM_G(R_wizard_step2),    std::bind(&WiFiManager::handleWizardStep2, this));
+  server->on(WM_G(R_wizard_next),     std::bind(&WiFiManager::handleWizardNext, this));
+  server->on(WM_G(R_wizard_back),     std::bind(&WiFiManager::handleWizardBack, this));
+  server->on(WM_G(R_wizard_skip),     std::bind(&WiFiManager::handleWizardSkip, this));
+  server->on(WM_G(R_wizard_complete), std::bind(&WiFiManager::handleWizardComplete, this));
   server->onNotFound (std::bind(&WiFiManager::handleNotFound, this));
   
   server->on(WM_G(R_update), std::bind(&WiFiManager::handleUpdate, this));
@@ -736,6 +743,24 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
   configPortalActive = true;
   bool result = connect = abort = false; // loop flags, connect true success, abort true break
   uint8_t state;
+  
+  // Initialize wizard state if wizard mode is enabled
+  if(_wizardMode) {
+    // Check if WiFi credentials are already saved
+    if(WiFi_hasAutoConnect() && WiFi_SSID(true) != "") {
+      // WiFi credentials exist, skip to Step 2 (params) if params exist, otherwise complete
+      if(_paramsCount > 0) {
+        _wizardStep = WIZARD_STEP_PARAMS;
+      } else {
+        _wizardStep = WIZARD_STEP_COMPLETE;
+      }
+    } else {
+      // No WiFi credentials, start at Step 1
+      _wizardStep = WIZARD_STEP_WIFI;
+    }
+  } else {
+    _wizardStep = WIZARD_STEP_NONE;
+  }
 
   _configPortalStart = millis();
 
@@ -1189,6 +1214,54 @@ bool WiFiManager::setSTAConfig(){
   return ret;
 }
 
+/**
+ * Verify WiFi credentials while keeping AP active (wizard mode)
+ * @param String ssid - SSID to verify
+ * @param String pass - Password to verify
+ * @return uint8_t - Connection status (WL_CONNECTED on success)
+ */
+uint8_t WiFiManager::verifyWiFiCredentials(String ssid, String pass) {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("Verifying WiFi credentials (wizard mode)..."));
+  #endif
+  
+  // Save current mode
+  WiFiMode_t currentMode = WiFi.getMode();
+  
+  // Switch to AP+STA mode to keep AP active
+  if(currentMode != WIFI_AP_STA) {
+    WiFi.mode(WIFI_AP_STA);
+    delay(100); // brief delay for mode change
+  }
+  
+  // Configure STA if needed
+  setSTAConfig();
+  
+  // Attempt connection with timeout
+  uint8_t connRes = WL_NO_SSID_AVAIL;
+  if(ssid != "") {
+    wifiConnectNew(ssid, pass, true);
+    connRes = waitForConnectResult(_wifiVerificationTimeout);
+  }
+  
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("WiFi verification result:"),getWLStatusString(connRes));
+  #endif
+  
+  // Disconnect STA but keep AP running
+  if(connRes == WL_CONNECTED) {
+    WiFi_Disconnect();
+    delay(100);
+  }
+  
+  // Restore to AP-only mode
+  WiFi.mode(WIFI_AP);
+  delay(100);
+  
+  updateConxResult(connRes);
+  return connRes;
+}
+
 // @todo change to getLastFailureReason and do not touch conxresult
 void WiFiManager::updateConxResult(uint8_t status){
   // hack in wrong password detection
@@ -1347,6 +1420,23 @@ void WiFiManager::handleRoot() {
   #endif
   if (captivePortal()) return; // If captive portal redirect instead of displaying the page
   handleRequest();
+  
+  // If wizard mode is enabled, redirect to appropriate step
+  if(_wizardMode && configPortalActive) {
+    if(_wizardStep == WIZARD_STEP_WIFI) {
+      server->sendHeader(F("Location"),F("/wizard/step1"));
+    } else if(_wizardStep == WIZARD_STEP_PARAMS) {
+      server->sendHeader(F("Location"),F("/wizard/step2"));
+    } else if(_wizardStep == WIZARD_STEP_COMPLETE) {
+      server->sendHeader(F("Location"),F("/wizard/complete"));
+    } else {
+      // Default to step 1
+      server->sendHeader(F("Location"),F("/wizard/step1"));
+    }
+    server->send(302);
+    return;
+  }
+  
   String page = getHTTPHead(_title, FPSTR(C_root)); // @token options @todo replace options with title
   String str  = FPSTR(HTTP_ROOT_MAIN); // @todo custom title
   str.replace(FPSTR(T_t),_title);
@@ -1372,6 +1462,14 @@ void WiFiManager::handleWifi(boolean scan) {
   DEBUG_WM(WM_DEBUG_VERBOSE,F("<- HTTP Wifi"));
   #endif
   handleRequest();
+  
+  // If wizard mode, redirect to wizard step 1
+  if(_wizardMode) {
+    server->sendHeader(F("Location"),F("/wizard/step1"));
+    server->send(302);
+    return;
+  }
+  
   String page = getHTTPHead(FPSTR(S_titlewifi), FPSTR(C_wifi)); // @token titlewifi
   if (scan) {
     #ifdef WM_DEBUG_LEVEL
@@ -1428,6 +1526,14 @@ void WiFiManager::handleParam(){
   DEBUG_WM(WM_DEBUG_VERBOSE,F("<- HTTP Param"));
   #endif
   handleRequest();
+  
+  // If wizard mode, redirect to wizard step 2
+  if(_wizardMode) {
+    server->sendHeader(F("Location"),F("/wizard/step2"));
+    server->send(302);
+    return;
+  }
+  
   String page = getHTTPHead(FPSTR(S_titleparam), FPSTR(C_param)); // @token titlewifi
 
   String pitem = "";
@@ -1888,10 +1994,51 @@ void WiFiManager::handleWifiSave() {
     _presavewificallback();  // @CALLBACK 
   }
 
-  if(_paramsInWifi) doParamSave();
+  if(_paramsInWifi && !_wizardMode) doParamSave(); // Don't save params in wizard mode here
 
   String page;
 
+  // Wizard mode: verify WiFi credentials
+  if(_wizardMode && _ssid != "") {
+    // Verify credentials first (this may take a few seconds)
+    uint8_t verifyResult = verifyWiFiCredentials(_ssid, _pass);
+    
+    // Show result page
+    page = getHTTPHead(FPSTR(S_titlewifi), FPSTR(C_wifi));
+    if(verifyResult == WL_CONNECTED) {
+      page += FPSTR(HTTP_WIZARD_WIFI_SUCCESS);
+      // Show Next button to proceed to Step 2
+      if(_paramsCount > 0) {
+        page += "<br/><br/>";
+        page += FPSTR(HTTP_WIZARD_NEXT_BTN);
+      } else {
+        // No params, go directly to complete
+        page += "<br/><br/>";
+        page += "<form action='/wizard/complete' method='get'><button type='submit'>Complete</button></form>";
+      }
+    } else {
+      // Show error message
+      page += FPSTR(HTTP_WIZARD_WIFI_FAILED);
+      String errorMsg = getWLStatusString(verifyResult);
+      page.replace(FPSTR(T_v), errorMsg);
+      // Show Back button to retry
+      page += "<br/><br/>";
+      page += FPSTR(HTTP_WIZARD_BACK_BTN);
+      // Keep credentials in form for retry - they're stored in _ssid and _pass
+    }
+    page += getHTTPEnd();
+    server->sendHeader(FPSTR(HTTP_HEAD_CORS), FPSTR(HTTP_HEAD_CORS_ALLOW_ALL));
+    HTTPSend(page);
+    
+    #ifdef WM_DEBUG_LEVEL
+    DEBUG_WM(WM_DEBUG_DEV,F("Sent wizard wifi verification page"));
+    #endif
+    
+    // Don't set connect flag in wizard mode - wait for completion
+    return;
+  }
+
+  // Normal mode (non-wizard)
   if(_ssid == ""){
     page = getHTTPHead(FPSTR(S_titlewifisettings), FPSTR(C_wifi)); // @token titleparamsaved
     page += FPSTR(HTTP_PARAMSAVED);
@@ -1926,7 +2073,44 @@ void WiFiManager::handleParamSave() {
 
   doParamSave();
 
-  String page = getHTTPHead(FPSTR(S_titleparamsaved), FPSTR(C_param)); // @token titleparamsaved
+  String page;
+  
+  // Wizard mode: verify parameters
+  if(_wizardMode) {
+    // Call verification callback if set (should be fast)
+    bool verifyResult = true;
+    if(_verifyParamscallback != NULL) {
+      #ifdef WM_DEBUG_LEVEL
+      DEBUG_WM(WM_DEBUG_VERBOSE,F("[CB] _verifyParamscallback calling"));
+      #endif
+      verifyResult = _verifyParamscallback();
+    }
+    
+    // Show result page
+    page = getHTTPHead(FPSTR(S_titleparam), FPSTR(C_param));
+    if(verifyResult) {
+      page += FPSTR(HTTP_WIZARD_PARAMS_SUCCESS);
+      // Show Complete button
+      page += "<br/><br/>";
+      page += "<form action='/wizard/complete' method='get'><button type='submit'>Complete</button></form>";
+    } else {
+      page += FPSTR(HTTP_WIZARD_PARAMS_FAILED);
+      // Show Back button to retry - go back to Step 2 (params form)
+      page += "<br/><br/>";
+      page += "<form action='/wizard/step2' method='get' style='display:inline;margin-right:10px;'><button type='submit'>Back</button></form>";
+    }
+    page += getHTTPEnd();
+    HTTPSend(page);
+    
+    #ifdef WM_DEBUG_LEVEL
+    DEBUG_WM(WM_DEBUG_DEV,F("Sent wizard param verification page"));
+    #endif
+    
+    return;
+  }
+
+  // Normal mode (non-wizard)
+  page = getHTTPHead(FPSTR(S_titleparamsaved), FPSTR(C_param)); // @token titleparamsaved
   page += FPSTR(HTTP_PARAMSAVED);
   if(_showBack) page += FPSTR(HTTP_BACKBTN); 
   page += getHTTPEnd();
@@ -2900,6 +3084,32 @@ void WiFiManager::setPreOtaUpdateCallback( std::function<void()> func ) {
  */
 void WiFiManager::setConfigPortalTimeoutCallback( std::function<void()> func ) {
   _configportaltimeoutcallback = func;
+}
+
+void WiFiManager::setWizardMode(bool enable) {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("setWizardMode:"),enable ? "true" : "false");
+  #endif
+  _wizardMode = enable;
+  if(!enable) {
+    _wizardStep = WIZARD_STEP_NONE;
+  } else {
+    _wizardStep = WIZARD_STEP_WIFI;
+  }
+}
+
+void WiFiManager::setWifiVerificationTimeout(unsigned long timeout) {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("setWifiVerificationTimeout:"),timeout);
+  #endif
+  _wifiVerificationTimeout = timeout;
+}
+
+void WiFiManager::setVerifyParamsCallback( std::function<bool()> func ) {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("setVerifyParamsCallback"));
+  #endif
+  _verifyParamscallback = func;
 }
 
 /**
@@ -4045,9 +4255,199 @@ void WiFiManager::handleUpdateDone() {
 	HTTPSend(page);
 
 	delay(1000); // send page
+	
+	// Restart after successful update
 	if (!Update.hasError()) {
 		ESP.restart();
 	}
+}
+
+/**
+ * Wizard Step 1: WiFi credentials
+ */
+void WiFiManager::handleWizardStep1() {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("<- HTTP Wizard Step 1"));
+  #endif
+  handleRequest();
+  _wizardStep = WIZARD_STEP_WIFI;
+  
+  String page = getHTTPHead(FPSTR(S_titlewifi), FPSTR(C_wifi));
+  page += FPSTR(HTTP_WIZARD_STEP1);
+  
+  // WiFi scan
+  WiFi_scanNetworks(server->hasArg(F("refresh")),false);
+  page += getScanItemOut();
+  
+  // WiFi form
+  String pitem = FPSTR(HTTP_FORM_START);
+  pitem.replace(FPSTR(T_v), F("/wifisave")); // Use absolute path
+  page += pitem;
+  
+  pitem = FPSTR(HTTP_FORM_WIFI);
+  pitem.replace(FPSTR(T_v), _ssid != "" ? _ssid : WiFi_SSID());
+  if(_showPassword){
+    pitem.replace(FPSTR(T_p), _pass != "" ? _pass : WiFi_psk());
+  }
+  else if(WiFi_psk() != "" || _pass != ""){
+    pitem.replace(FPSTR(T_p),FPSTR(S_passph));    
+  }
+  else {
+    pitem.replace(FPSTR(T_p),"");    
+  }
+  page += pitem;
+  
+  page += getStaticOut();
+  page += FPSTR(HTTP_FORM_WIFI_END);
+  page += FPSTR(HTTP_FORM_END);
+  page += "<br/>";
+  // Note: Form submission goes to /wifisave which will verify and show Next button
+  // No need for Next button here since form submit handles it
+  if(_paramsCount > 0) {
+    page += FPSTR(HTTP_WIZARD_SKIP_BTN);
+  }
+  reportStatus(page);
+  page += getHTTPEnd();
+  
+  HTTPSend(page);
+}
+
+/**
+ * Wizard Step 2: Custom parameters
+ */
+void WiFiManager::handleWizardStep2() {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("<- HTTP Wizard Step 2"));
+  #endif
+  handleRequest();
+  _wizardStep = WIZARD_STEP_PARAMS;
+  
+  String page = getHTTPHead(FPSTR(S_titleparam), FPSTR(C_param));
+  page += FPSTR(HTTP_WIZARD_STEP2);
+  
+  String pitem = FPSTR(HTTP_FORM_START);
+  pitem.replace(FPSTR(T_v), F("/paramsave")); // Use absolute path
+  page += pitem;
+  
+  page += getParamOut();
+  page += FPSTR(HTTP_FORM_END);
+  page += "<br/>";
+  page += FPSTR(HTTP_WIZARD_BACK_BTN);
+  // Note: Form submission goes to /paramsave which will verify and show Complete button
+  // No need for Next button here since form submit handles it
+  page += "<br/>";
+  page += FPSTR(HTTP_WIZARD_SKIP_BTN);
+  reportStatus(page);
+  page += getHTTPEnd();
+  
+  HTTPSend(page);
+}
+
+/**
+ * Wizard navigation: Next
+ */
+void WiFiManager::handleWizardNext() {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("<- HTTP Wizard Next"));
+  #endif
+  handleRequest();
+  
+  if(_wizardStep == WIZARD_STEP_WIFI) {
+    // Move to Step 2 if params exist, otherwise complete
+    if(_paramsCount > 0) {
+      _wizardStep = WIZARD_STEP_PARAMS;
+      server->sendHeader(F("Location"),F("/wizard/step2"));
+      server->send(302);
+    } else {
+      _wizardStep = WIZARD_STEP_COMPLETE;
+      server->sendHeader(F("Location"),F("/wizard/complete"));
+      server->send(302);
+    }
+  } else if(_wizardStep == WIZARD_STEP_PARAMS) {
+    _wizardStep = WIZARD_STEP_COMPLETE;
+    server->sendHeader(F("Location"),F("/wizard/complete"));
+    server->send(302);
+  } else {
+    server->sendHeader(F("Location"),F("/wizard/step1"));
+    server->send(302);
+  }
+}
+
+/**
+ * Wizard navigation: Back
+ */
+void WiFiManager::handleWizardBack() {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("<- HTTP Wizard Back"));
+  #endif
+  handleRequest();
+  
+  if(_wizardStep == WIZARD_STEP_PARAMS) {
+    _wizardStep = WIZARD_STEP_WIFI;
+    server->sendHeader(F("Location"),F("/wizard/step1"));
+    server->send(302);
+  } else {
+    server->sendHeader(F("Location"),F("/wizard/step1"));
+    server->send(302);
+  }
+}
+
+/**
+ * Wizard navigation: Skip
+ */
+void WiFiManager::handleWizardSkip() {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("<- HTTP Wizard Skip"));
+  #endif
+  handleRequest();
+  
+  if(_wizardStep == WIZARD_STEP_WIFI) {
+    // Skip to Step 2 if params exist, otherwise complete
+    if(_paramsCount > 0) {
+      _wizardStep = WIZARD_STEP_PARAMS;
+      server->sendHeader(F("Location"),F("/wizard/step2"));
+      server->send(302);
+    } else {
+      _wizardStep = WIZARD_STEP_COMPLETE;
+      server->sendHeader(F("Location"),F("/wizard/complete"));
+      server->send(302);
+    }
+  } else if(_wizardStep == WIZARD_STEP_PARAMS) {
+    _wizardStep = WIZARD_STEP_COMPLETE;
+    server->sendHeader(F("Location"),F("/wizard/complete"));
+    server->send(302);
+  } else {
+    server->sendHeader(F("Location"),F("/wizard/step1"));
+    server->send(302);
+  }
+}
+
+/**
+ * Wizard completion page
+ */
+void WiFiManager::handleWizardComplete() {
+  #ifdef WM_DEBUG_LEVEL
+  DEBUG_WM(WM_DEBUG_VERBOSE,F("<- HTTP Wizard Complete"));
+  #endif
+  handleRequest();
+  _wizardStep = WIZARD_STEP_COMPLETE;
+  
+  // Save WiFi credentials permanently if verified
+  if(_ssid != "") {
+    // Parameters were already saved in handleParamSave() during Step 2
+    // Don't call doParamSave() again here as server->arg() will be empty (this is a GET request)
+    // The parameters are already stored in _params array from the previous POST request
+    
+    // Signal to processConfigPortal to save WiFi credentials
+    connect = true;
+  }
+  
+  String page = getHTTPHead(_title, FPSTR(C_root));
+  page += FPSTR(HTTP_WIZARD_COMPLETE);
+  page += FPSTR(HTTP_WIZARD_EXIT_BTN);
+  page += getHTTPEnd();
+  
+  HTTPSend(page);
 }
 
 #endif
