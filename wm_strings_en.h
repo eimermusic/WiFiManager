@@ -88,8 +88,8 @@ const char HTTP_WIZARD_WIFI_FAILED[] PROGMEM = "<div class='msg'><strong>WiFi ve
 const char HTTP_WIZARD_PARAMS_SUCCESS[] PROGMEM = "<div class='msg S'><strong>Parameters verified successfully!</strong></div>";
 const char HTTP_WIZARD_PARAMS_FAILED[] PROGMEM = "<div class='msg'><strong>Parameter verification failed</strong><br/>Please check your settings and try again.</div>";
 const char HTTP_WIZARD_COMPLETE[]  PROGMEM = "<div class='msg S'><h2>Configuration Complete!</h2><p>All settings have been saved successfully.</p></div>";
-const char HTTP_WIZARD_BACK_BTN[]  PROGMEM = "<form action='/wizard/back' method='get' style='display:inline;margin-right:10px;'><button type='submit'>Back</button></form>";
-const char HTTP_WIZARD_SKIP_BTN[] PROGMEM = "<form action='/wizard/skip' method='get' style='display:inline;margin-right:10px;'><button type='submit'>Skip</button></form>";
+const char HTTP_WIZARD_BACK_BTN[]  PROGMEM = "<form action='/wizard/back' method='get' style='display:inline;margin-right:10px;'><button style='width:47%;' type='submit'>Back</button></form>";
+const char HTTP_WIZARD_SKIP_BTN[] PROGMEM = "<form action='/wizard/skip' method='get' style='display:inline;margin-right:10px;line-height:40px;'><button style='width:47%;float:right;' type='submit'>Skip</button></form>";
 const char HTTP_WIZARD_NEXT_BTN[] PROGMEM = "<form action='/wizard/next' method='get' style='display:inline;margin-right:10px;'><button type='submit'>Next</button></form>";
 const char HTTP_WIZARD_EXIT_BTN[] PROGMEM = "<form action='/exit' method='get'><button type='submit'>Exit Configuration</button></form>";
 
