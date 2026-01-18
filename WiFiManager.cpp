@@ -4306,6 +4306,7 @@ void WiFiManager::handleWizardStep1() {
   if(_paramsCount > 0) {
     page += FPSTR(HTTP_WIZARD_SKIP_BTN);
   }
+  page += FPSTR(HTTP_WIZARD_MODAL);
   reportStatus(page);
   page += getHTTPEnd();
   
@@ -4336,6 +4337,7 @@ void WiFiManager::handleWizardStep2() {
   // Note: Form submission goes to /paramsave which will verify and show Complete button
   // No need for Next button here since form submit handles it
   page += FPSTR(HTTP_WIZARD_SKIP_BTN);
+  page += FPSTR(HTTP_WIZARD_MODAL);
   reportStatus(page);
   page += getHTTPEnd();
   

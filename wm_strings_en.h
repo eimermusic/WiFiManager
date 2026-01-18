@@ -35,6 +35,10 @@ const char HTTP_SCRIPT[]           PROGMEM = "<script>function c(l){"
 "document.getElementById('p').disabled = !p;"
 "if(p)document.getElementById('p').focus();};"
 "function f() {var x = document.getElementById('p');x.type==='password'?x.type='text':x.type='password';}"
+"function vs(){var m=document.getElementById('vm');if(m)m.style.display='flex';}"
+"function vh(){var m=document.getElementById('vm');if(m)m.style.display='none';}"
+"function init(){document.body.addEventListener('submit',function(e){var a=e.target.getAttribute('action');if(a&&(a.indexOf('wifisave')>=0||a.indexOf('paramsave')>=0)){vs();}},true);vh();}"
+"if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}"
 "</script>"; // @todo add button states, disable on click , show ack , spinner etc
 
 const char HTTP_HEAD_END[]         PROGMEM = "</head><body class='{c}'><div class='wrap'>"; // {c} = _bodyclass
@@ -92,6 +96,7 @@ const char HTTP_WIZARD_BACK_BTN[]  PROGMEM = "<form action='/wizard/back' method
 const char HTTP_WIZARD_SKIP_BTN[] PROGMEM = "<form action='/wizard/skip' method='get' style='display:inline;margin-right:10px;line-height:40px;'><button style='width:47%;float:right;' type='submit'>Skip</button></form>";
 const char HTTP_WIZARD_NEXT_BTN[] PROGMEM = "<form action='/wizard/next' method='get' style='display:inline;margin-right:10px;'><button type='submit'>Next</button></form>";
 const char HTTP_WIZARD_EXIT_BTN[] PROGMEM = "<form action='/exit' method='get'><button type='submit'>Exit Configuration</button></form>";
+const char HTTP_WIZARD_MODAL[]    PROGMEM = "<div id='vm' class='vm'><div class='vmc'><div class='vs'></div>Verifying...</div></div>";
 
 const char HTTP_STATUS_ON[]        PROGMEM = "<div class='msg S'><strong>Connected</strong> to {v}<br/><em><small>with IP {i}</small></em></div>";
 const char HTTP_STATUS_OFF[]       PROGMEM = "<div class='msg {c}'><strong>Not connected</strong> to {v}{r}</div>"; // {c=class} {v=ssid} {r=status_off}
@@ -131,6 +136,11 @@ const char HTTP_STYLE[]            PROGMEM = "<style>"
 "body.invert .msg{color:#fff;background-color:#282828;border-top:1px solid #555;border-right:1px solid #555;border-bottom:1px solid #555;}"
 "body.invert .q[role=img]{-webkit-filter:invert(1);filter:invert(1);}"
 ":disabled {opacity: 0.5;}"
+// wizard modal
+".vm{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:none;align-items:center;justify-content:center}"
+".vmc{background:#fff;padding:30px;border-radius:.3rem;text-align:center;min-width:200px}"
+".vs{width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #1fa3ec;border-radius:50%;margin:0 auto 15px;animation:spin 1s linear infinite}"
+"@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}"
 "</style>";
 
 #ifndef WM_NOHELP
