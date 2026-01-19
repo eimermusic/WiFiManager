@@ -723,6 +723,9 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
 
   if(!validApPassword()) return false;
   
+  // Check connection status BEFORE STA might be disabled (for wizard mode logic)
+  bool isConnected = (WiFi.status() == WL_CONNECTED);
+  
   // HANDLE issues with STA connections, shutdown sta if not connected, or else this will hang channel scanning and softap will not respond
   if(_disableSTA || (!WiFi.isConnected() && _disableSTAConn)){
     // this fixes most ap problems, however, simply doing mode(WIFI_AP) does not work if sta connection is hanging, must `wifi_station_disconnect` 
@@ -746,16 +749,17 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
   
   // Initialize wizard state if wizard mode is enabled
   if(_wizardMode) {
-    // Check if WiFi credentials are already saved
-    if(WiFi_hasAutoConnect() && WiFi_SSID(true) != "") {
-      // WiFi credentials exist, skip to Step 2 (params) if params exist, otherwise complete
+    // Check if WiFi credentials are saved AND successfully connected
+    // If credentials exist but connection failed, show WiFi config screen to fix it
+    if(WiFi_hasAutoConnect() && WiFi_SSID(true) != "" && isConnected) {
+      // WiFi credentials exist and connection is successful, skip to Step 2 (params) if params exist, otherwise complete
       if(_paramsCount > 0) {
         _wizardStep = WIZARD_STEP_PARAMS;
       } else {
         _wizardStep = WIZARD_STEP_COMPLETE;
       }
     } else {
-      // No WiFi credentials, start at Step 1
+      // No WiFi credentials OR connection failed, start at Step 1 to configure/fix WiFi
       _wizardStep = WIZARD_STEP_WIFI;
     }
   } else {
