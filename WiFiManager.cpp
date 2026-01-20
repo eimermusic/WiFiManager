@@ -1252,15 +1252,57 @@ uint8_t WiFiManager::verifyWiFiCredentials(String ssid, String pass) {
   DEBUG_WM(WM_DEBUG_VERBOSE,F("WiFi verification result:"),getWLStatusString(connRes));
   #endif
   
-  // Disconnect STA but keep AP running
+  // Keep connection active if verification succeeded to allow custom parameters
+  // to use the network (e.g., for API credential verification)
+  // Connection will be cleaned up when config portal closes
   if(connRes == WL_CONNECTED) {
+    // Wait for IP address assignment (DHCP or static IP)
+    // WL_CONNECTED can be returned before IP is assigned, especially with DHCP
+    unsigned long ipTimeout = millis() + 10000; // 10 second timeout for IP assignment
+    IPAddress ip = WiFi.localIP();
+    
+    // If using static IP, it should already be set, but check anyway
+    // If using DHCP, wait for IP to be assigned
+    while(ip == IPAddress(0,0,0,0) && millis() < ipTimeout) {
+      delay(100);
+      ip = WiFi.localIP();
+      // Check connection status hasn't changed
+      if(WiFi.status() != WL_CONNECTED) {
+        connRes = WiFi.status();
+        #ifdef WM_DEBUG_LEVEL
+        DEBUG_WM(WM_DEBUG_ERROR,F("Connection lost while waiting for IP"));
+        #endif
+        break;
+      }
+    }
+    
+    if(ip != IPAddress(0,0,0,0)) {
+      #ifdef WM_DEBUG_LEVEL
+      DEBUG_WM(WM_DEBUG_VERBOSE,F("WiFi verified successfully, connection maintained for parameter verification"));
+      DEBUG_WM(WM_DEBUG_VERBOSE,F("IP Address:"),ip.toString());
+      #endif
+      // Stay in WIFI_AP_STA mode with active connection
+      // No need to disconnect or change mode - keep both AP and STA active
+    } else {
+      #ifdef WM_DEBUG_LEVEL
+      DEBUG_WM(WM_DEBUG_ERROR,F("WiFi connected but IP address not assigned (DHCP timeout?)"));
+      #endif
+      // Connection established but no IP - treat as failure for verification purposes
+      connRes = WL_CONNECT_FAILED;
+      // Disconnect and clean up since we can't use the connection without an IP
+      WiFi_Disconnect();
+      delay(100);
+      WiFi.mode(WIFI_AP);
+      delay(100);
+    }
+  } else {
+    // Only disconnect if verification failed to clean up failed attempts
     WiFi_Disconnect();
     delay(100);
+    // Restore to AP-only mode on failure
+    WiFi.mode(WIFI_AP);
+    delay(100);
   }
-  
-  // Restore to AP-only mode
-  WiFi.mode(WIFI_AP);
-  delay(100);
   
   updateConxResult(connRes);
   return connRes;
